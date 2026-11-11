@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  monitors    Monitor[]
+  statusPages StatusPage[]
+}
+
+model Monitor {
+  id                 String              @id @default(cuid())
+  name               String
+  url                String
+  description        String?
+  type               String              @default("HTTP") // HTTP, HTTPS, API, KEYWORD
+  method             String              @default("GET")
+  headers            String?             // JSON string
+  body               String?
+  expectedStatusCode Int                 @default(200)
+  keyword            String?
+  interval           Int                 @default(60) // in seconds
+  timeout            Int                 @default(10000) // in ms
+  degradedThreshold  Int                 @default(1500) // in ms
+  isActive           Boolean             @default(true)
+  currentStatus      String              @default("PENDING") // OPERATIONAL, DEGRADED, DOWN, PAUSED, PENDING
+  lastCheckAt        DateTime?
+  lastResponseTime   Int?
+  lastStatusCode     Int?
+  lastErrorMessage   String?
+  projectId          String?
+  project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  inMaintenance      Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  checks             Check[]
+  incidents          Incident[]
+  maintenanceWindows MaintenanceWindow[]
+
+  @@index([projectId])
+  @@index([currentStatus])
+  @@index([isActive])
+}
+
+model Check {
+  id           String   @id @default(cuid())
+  monitorId    String
+  monitor      Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  status       String   // UP, DOWN, DEGRADED
+  statusCode   Int?
+  responseTime Int      // in ms
+  message      String?
+  errorMessage String?
+  timestamp    DateTime @default(now())
+
+  @@index([monitorId, timestamp])
+  @@index([timestamp])
+}
+
+model Incident {
+  id          String           @id @default(cuid())
+  monitorId   String
+  monitor     Monitor          @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      String           @default("INVESTIGATING") // INVESTIGATING, IDENTIFIED, MONITORING, RESOLVED
+  severity    String           @default("MAJOR") // CRITICAL, MAJOR, MINOR, MAINTENANCE
+  startedAt   DateTime         @default(now())
+  resolvedAt  DateTime?
+  duration    Int?             // duration in seconds
+  autoCreated Boolean          @default(true)
+  aiSummary   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  updates     IncidentUpdate[]
+
+  @@index([monitorId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model IncidentUpdate {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  status     String   // INVESTIGATING, IDENTIFIED, MONITORING, RESOLVED
+  message    String
+  createdAt  DateTime @default(now())
+
+  @@index([incidentId])
+}
+
+model StatusPage {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  title              String
+  description        String?
+  logoUrl            String?
+  theme              String   @default("dark")
+  customAnnouncement String?
+  announcementLevel  String   @default("info") // info, warning, critical
+  isPublic           Boolean  @default(true)
+  projectId          String?
+  project            Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  monitorIds         String?  // JSON array of monitor IDs, or null for all
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model MaintenanceWindow {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  monitorId   String?
+  monitor     Monitor? @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([monitorId])
+  @@index([startsAt, endsAt])
+}
